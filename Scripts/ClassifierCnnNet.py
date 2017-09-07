@@ -19,7 +19,7 @@ elif platform == 'linux':
     CLEAR = 'clear'
     DEV = '/gpu:0'
 
-BATCH_SIZE = 100
+BATCH_SIZE = 50
 
 
 def timestamp():
@@ -83,7 +83,7 @@ def cnn_net(x, layers):
             use_bias=True,
             name=f'conv{i*2}')
 
-        #tf.summary.image(conv1.name, tf.reshape(conv1[0]))
+        tf.summary.image(conv1.name, tf.expand_dims(conv1[:, :, :, 0], axis=3))
 
         conv2 = tf.layers.conv2d(
             inputs=conv1,
@@ -96,7 +96,7 @@ def cnn_net(x, layers):
             use_bias=True,
             name=f'conv{i*2+1}')
 
-        #tf.summary.image(conv2.name, conv2[0])
+        tf.summary.image(conv2.name, tf.expand_dims(conv2[:, :, :, 0], axis=3))
 
         print(conv1)
         print(conv2)
@@ -109,6 +109,7 @@ def cnn_net(x, layers):
 
         out = pool
     return out
+
 
 def main():
     ###################
@@ -125,8 +126,8 @@ def main():
 
         testimgs, testlbls = read_and_decode(filename_queue)
 
-        x = tf.placeholder(tf.float32, [None, 256, 256, 3])
-
+        x = tf.placeholder(tf.float32, [None, 256, 256, 3], name='Input')
+        tf.summary.image(x.name, x)
         endpool = cnn_net(x, 2)
 
         print(endpool)
@@ -158,7 +159,7 @@ def main():
                 tf.summary.scalar('cross_entropy', cross_entropy)
 
         with tf.name_scope('train'):
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.005)
             train_op = optimizer.minimize(loss=cross_entropy)
 
         with tf.name_scope('accuracy'):
@@ -194,7 +195,7 @@ def main():
                 test_cumsum = np.array([0, 0])
 
                 try:
-                    for epoch in range(100):
+                    for epoch in range(10):
                         # print(sess.run(imgs.eval()))
                         _ = sess.run([train_op],
                                      feed_dict={x: imgs.eval(),
@@ -221,10 +222,10 @@ def main():
                         print(f'max true:{max(y[:,0]):.4f}, max false:{max(y[:,1]):.4f}')
                         print(f'mean true:{np.mean(y[:,0]):.4f}, mean false:{np.mean(y[:,1]):.4f}')
                         print(f'min true:{min(y[:,0]):.4f}, min false:{min(y[:,1]):.4f}')
-                        print(f'prediction:{y[:10]}')
-                        print(f'labels:{y_[:10]}')
-                        print(f'Train labels cum:{(train_cumsum/(epoch+1))*10}')
-                        print(f'Test labels cum:{(test_cumsum/(epoch+1))*10}')
+                        print(
+                            f'spread face true:{max(y[:,0])-min(y[:,0]):.4f}, spread face false:{max(y[:,1])-min(y[:,1]):.4f}')
+                        print(f'Train labels cum:{(train_cumsum/(epoch+1))/BATCH_SIZE}')
+                        print(f'Test labels cum:{(test_cumsum/(epoch+1))/BATCH_SIZE}')
                         print(f'loss:{los:.6f}')
                         print(f'Train acc:{acc_t:.6f}')
                         print(f'Test acc:{acc:.6f}')
