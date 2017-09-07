@@ -102,12 +102,12 @@ def cnn_net(x, layers, act_func):
         out = pool
     return out
 
-
 def main():
     Batchsizes = [100]
     learning_rates = [0.01, 0.005, 0.001, 0.0005]
     activation_funcs = [tf.nn.relu, tf.nn.sigmoid, tf.nn.tanh, tf.nn.softplus]
     Epochs = 10000
+    Test = False
 
     for BATCH_SIZE in Batchsizes:
         for learning_rate in learning_rates:
@@ -117,22 +117,19 @@ def main():
                 with tf.device(DEV):
 
                     with tf.name_scope('Data_queues'):
-                        filename_queue = tf.train.string_input_producer(
-                            glob.glob(f'{BASE_PATH}/ClassifierDataTfRecords/Train*.tfrecords'))
+                        with tf.name_scope('Train'):
+                            filename_queue1 = tf.train.string_input_producer(
+                                glob.glob(f'{BASE_PATH}/ClassifierDataTfRecords/Train*.tfrecords'))
+                            imgs, lbls = read_and_decode(filename_queue1, BATCH_SIZE)
 
-                        imgs, lbls = read_and_decode(filename_queue, BATCH_SIZE)
+                        with tf.name_scope('Test'):
+                            filename_queue2 = tf.train.string_input_producer(
+                                glob.glob(f'{BASE_PATH}/ClassifierDataTfRecords/Test*.tfrecords'))
+                            testimgs, testlbls = read_and_decode(filename_queue1, BATCH_SIZE)
 
-                        filename_queue = tf.train.string_input_producer(
-                            glob.glob(f'{BASE_PATH}/ClassifierDataTfRecords/Test*.tfrecords'))
 
-                        testimgs, testlbls = read_and_decode(filename_queue, BATCH_SIZE)
-
-                    #img_initializer = tf.placeholder(dtype=imgs.dtype,
-                    #                                 shape=imgs.shape)
-                    #x = tf.Variable(img_initializer, trainable=False, collections=[])
-                    x = tf.placeholder(tf.float32, [None, 256, 256, 3], name='Input')
-                    tf.summary.image(x.name, x, max_outputs=1)
-                    endpool = cnn_net(x, 2, activation_func)
+                    tf.summary.image(imgs.name, imgs, max_outputs=1)
+                    endpool = cnn_net(imgs, 2, activation_func)
 
                     pool3_flat = tf.reshape(endpool, [-1, 64 * 64 * 16])
 
@@ -157,12 +154,9 @@ def main():
 
                     logits = tf.nn.softmax(dense2, dim=1)
 
-                    onehot_labels = tf.placeholder(tf.float32, [None, 2])
-                    #x = tf.Variable(imgs, trainable=False, collections=[])
-                    print(onehot_labels)
-                    with tf.name_scope('cross_entropy'):
+                    with tf.name_scope('Train_cross_entropy'):
                         diff = tf.nn.softmax_cross_entropy_with_logits(
-                            labels=onehot_labels,
+                            labels=lbls,
                             logits=logits)
                         with tf.name_scope('total'):
                             cross_entropy = tf.reduce_mean(diff)
@@ -174,11 +168,12 @@ def main():
                         train_op = optimizer.minimize(loss=cross_entropy, global_step=global_step)
 
                     with tf.name_scope('accuracy'):
-                        with tf.name_scope('correct_prediction'):
-                            correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(onehot_labels, 1))
-                        with tf.name_scope('accuracy'):
-                            accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-                    tf.summary.scalar('accuracy', accuracy)
+                        with tf.name_scope('Train'):
+                            with tf.name_scope('correct_prediction'):
+                                correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(lbls, 1))
+                            with tf.name_scope('accuracy'):
+                                accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+                            tf.summary.scalar('Train accuracy', accuracy)
 
                     for var in tf.trainable_variables():
                         tf.summary.histogram(var.name, var)
@@ -190,7 +185,7 @@ def main():
 
                     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.7)
                     config = tf.ConfigProto(allow_soft_placement=True, gpu_options=gpu_options)
-                # Train
+                # Train / Test
                 with tf.Session(config=config).as_default() as sess:
                     session_path = f'{BASE_PATH}/cnnlog/afn={activation_func.__name__},bs={BATCH_SIZE},lr={learning_rate:.0e}'
 
@@ -201,42 +196,37 @@ def main():
                     if len(models) > 0:
                         print(max(models))
                         saver = tf.train.import_meta_graph(max(models))
-                        saver.restore(sess, tf.train.latest_checkpoint(session_path))
-                        print(f'restored model {session_path} \nEpoch: {global_step.eval()}')
+                        path = saver.restore(sess, tf.train.latest_checkpoint(session_path))
+                        print(f'restored model {path} \nEpoch: {global_step.eval()}')
                     else:
                         print(f'created new model {session_path}')
                         saver = tf.train.Saver()
                     coord = tf.train.Coordinator()
                     threads = tf.train.start_queue_runners(coord=coord)
                     step = 0
+
                     try:
                         while step < Epochs:
-                            print(f'step:{step}')
-                            if not step % 100 or step == Epochs - 1:
+                            #print(f'step:{step}')
+                            if (not step % 100 or step == Epochs - 1) and not Test:
                                 print('saving model')
                                 saver.save(sess,
                                            f'{session_path}/model-{step:06d}')
+                            if not Test:
+                                _, step = sess.run([train_op,
+                                                    global_step])
 
-                            _, step = sess.run([train_op,
-                                                global_step],
-                                               feed_dict={x: imgs.eval(),
-                                                          onehot_labels: lbls.eval()})
-
-                            if not step % 50:
+                            if not step % 10:
                                 acc_t, los = sess.run([accuracy,
-                                                       cross_entropy],
-                                                      feed_dict={x: imgs.eval(),
-                                                                 onehot_labels: lbls.eval()})
+                                                       cross_entropy])
 
                                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                                 run_metadata = tf.RunMetadata()
 
                                 acc, y, y_, mrg = sess.run([accuracy,
                                                             logits,
-                                                            onehot_labels,
+                                                            lbls,
                                                             merged],
-                                                           feed_dict={x: testimgs.eval(),
-                                                                      onehot_labels: testlbls.eval()},
                                                            options=run_options,
                                                            run_metadata=run_metadata)
 

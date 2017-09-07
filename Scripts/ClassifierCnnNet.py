@@ -189,57 +189,55 @@ def main():
             saver = tf.train.Saver()
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(coord=coord)
-            with open('./loss.log', '+w') as losslog:
-                losslog.write(f'{timestamp()}:Started Learning')
-                train_cumsum = np.array([0, 0])
-                test_cumsum = np.array([0, 0])
+            train_cumsum = np.array([0, 0])
+            test_cumsum = np.array([0, 0])
 
-                try:
-                    for epoch in range(10):
-                        # print(sess.run(imgs.eval()))
-                        _ = sess.run([train_op],
-                                     feed_dict={x: imgs.eval(),
-                                                onehot_labels: lbls.eval()})
+            try:
+                for epoch in range(10):
+                    # print(sess.run(imgs.eval()))
+                    _ = sess.run([train_op],
+                                 feed_dict={x: imgs.eval(),
+                                            onehot_labels: lbls.eval()})
 
-                        _, acc_t, los, y__ = sess.run([train_op, accuracy, cross_entropy, onehot_labels],
-                                                      feed_dict={x: imgs.eval(),
-                                                                 onehot_labels: lbls.eval()})
-                        acc, y, y_, mrg = sess.run([accuracy, logits, onehot_labels, merged],
-                                                   feed_dict={x: imgs.eval(),
-                                                              onehot_labels: lbls.eval()})
-                        # print(np.concatenate((out, truth), axis=1))
-                        # print(np.concatenate((out, truth), axis=1))
-                        # loss = sess.run(tf.reduce_sum(loss))
-                        os.system(CLEAR)
+                    _, acc_t, los, y__ = sess.run([train_op, accuracy, cross_entropy, onehot_labels],
+                                                  feed_dict={x: imgs.eval(),
+                                                             onehot_labels: lbls.eval()})
+                    acc, y, y_, mrg = sess.run([accuracy, logits, onehot_labels, merged],
+                                               feed_dict={x: imgs.eval(),
+                                                          onehot_labels: lbls.eval()})
+                    # print(np.concatenate((out, truth), axis=1))
+                    # print(np.concatenate((out, truth), axis=1))
+                    # loss = sess.run(tf.reduce_sum(loss))
+                    os.system(CLEAR)
 
-                        train_cumsum = train_cumsum + np.sum(y__, axis=0)
-                        test_cumsum = test_cumsum + np.sum(y_, axis=0)
+                    train_cumsum = train_cumsum + np.sum(y__, axis=0)
+                    test_cumsum = test_cumsum + np.sum(y_, axis=0)
 
-                        writer.add_summary(mrg, epoch)
-                        # writer.add_summary(tf.summary.scalar("loss", loss), i)
-                        # writer.add_summary(tf.summary.scalar("Test_Accuracy", accuracy), i)
-                        print(np.concatenate((y[:10], y_[:10]), axis=1))
-                        print(f'max true:{max(y[:,0]):.4f}, max false:{max(y[:,1]):.4f}')
-                        print(f'mean true:{np.mean(y[:,0]):.4f}, mean false:{np.mean(y[:,1]):.4f}')
-                        print(f'min true:{min(y[:,0]):.4f}, min false:{min(y[:,1]):.4f}')
-                        print(
-                            f'spread face true:{max(y[:,0])-min(y[:,0]):.4f}, spread face false:{max(y[:,1])-min(y[:,1]):.4f}')
-                        print(f'Train labels cum:{(train_cumsum/(epoch+1))/BATCH_SIZE}')
-                        print(f'Test labels cum:{(test_cumsum/(epoch+1))/BATCH_SIZE}')
-                        print(f'loss:{los:.6f}')
-                        print(f'Train acc:{acc_t:.6f}')
-                        print(f'Test acc:{acc:.6f}')
-                        writer.flush()
-                        if not epoch % 10:
-                            saver.save(sess, f'{BASE_PATH}/cnnlog/')
+                    writer.add_summary(mrg, epoch)
+                    # writer.add_summary(tf.summary.scalar("loss", loss), i)
+                    # writer.add_summary(tf.summary.scalar("Test_Accuracy", accuracy), i)
+                    print(np.concatenate((y[:10], y_[:10]), axis=1))
+                    print(f'max true:{max(y[:,0]):.4f}, max false:{max(y[:,1]):.4f}')
+                    print(f'mean true:{np.mean(y[:,0]):.4f}, mean false:{np.mean(y[:,1]):.4f}')
+                    print(f'min true:{min(y[:,0]):.4f}, min false:{min(y[:,1]):.4f}')
+                    print(
+                        f'spread face true:{max(y[:,0])-min(y[:,0]):.4f}, spread face false:{max(y[:,1])-min(y[:,1]):.4f}')
+                    print(f'Train labels cum:{(train_cumsum/(epoch+1))/BATCH_SIZE}')
+                    print(f'Test labels cum:{(test_cumsum/(epoch+1))/BATCH_SIZE}')
+                    print(f'loss:{los:.6f}')
+                    print(f'Train acc:{acc_t:.6f}')
+                    print(f'Test acc:{acc:.6f}')
+                    writer.flush()
+                    if not epoch % 10:
+                        saver.save(sess, f'{BASE_PATH}/cnnlog/')
 
-                except tf.errors.OutOfRangeError as e:
-                    print(e)
+            except tf.errors.OutOfRangeError as e:
+                print(e)
 
-                finally:
-                    writer.close()
-                    coord.request_stop()
-                    coord.join(threads)
+            finally:
+                writer.close()
+                coord.request_stop()
+                coord.join(threads)
 
 
 if __name__ == '__main__':
